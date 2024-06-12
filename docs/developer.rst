@@ -227,7 +227,7 @@ Updating the Module Database
 
 After adding a new module or making a module available for another module, you need to update the module database stored
 under `.settings/module_db.json`. You might also need to update your current QUARK module environment so that your new
-modules can be used. You can update this database automatically via `python src/main.py env --createmoduledb`.
+modules can be used. You can update this database automatically via ``.
 
 **Note:** For `python src/main.py env --createmoduledb` to work you need to have all packages from all modules installed!
 

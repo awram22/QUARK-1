@@ -24,7 +24,7 @@ qiskit-optimization==0.5.0
 pyqubo==1.4.0
 dwave_networkx==0.8.13
 qiskit==0.40.0
-pandas==1.5.2
 cma==3.3.0
 tensorboard==2.13.0
 tensorboardX==2.6.2
+pandas==1.5.2

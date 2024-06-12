@@ -111,6 +111,7 @@ class Training(Core, ABC):
         pmf_model[pmf_model == 0] = 1e-8
         return -np.sum(pmf_target * np.log(pmf_model), axis=1)
 
+
     class Timing:
         """
         This module is an abstraction of time measurement for for both CPU and GPU processes 

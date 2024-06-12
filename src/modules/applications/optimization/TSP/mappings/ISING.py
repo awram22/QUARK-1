@@ -17,11 +17,11 @@ from typing import TypedDict
 
 import networkx as nx
 import numpy as np
-from dimod import qubo_to_ising
-from more_itertools import locate
-from pyqubo import Array, Placeholder, Constraint
-from qiskit_optimization.applications import Tsp
-from qiskit_optimization.converters import QuadraticProgramToQubo
+#from dimod import qubo_to_ising
+#from more_itertools import locate
+#from pyqubo import Array, Placeholder, Constraint
+#from qiskit_optimization.applications import Tsp
+#from qiskit_optimization.converters import QuadraticProgramToQubo
 
 from modules.applications.Mapping import *
 from modules.applications.optimization.TSP.mappings.QUBO import QUBO

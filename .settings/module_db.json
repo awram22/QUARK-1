@@ -1,7 +1,7 @@
 {
-  "build_number": 7,
-  "build_date": "20-03-2024 12:51:58",
-  "git_revision_number": "3be6f3847150d4bb8debee2451522b0b19fa205f",
+  "build_number": 10,
+  "build_date": "07-05-2024 08:25:45",
+  "git_revision_number": "ea29c3e0e298cd7fe97029b0c2276af47aaec3c1",
   "modules": [
     {
       "name": "PVC",
@@ -1981,6 +1981,111 @@
               "module": "modules.devices.Local",
               "requirements": [],
               "submodules": []
+            }
+          ]
+        }
+      ],
+      "requirements": [
+        {
+          "name": "networkx",
+          "version": "2.8.8"
+        },
+        {
+          "name": "numpy",
+          "version": "1.23.5"
+        }
+      ]
+    },
+    {
+      "name": "MaxCut",
+      "class": "MaxCut",
+      "module": "modules.applications.optimization.MaxCut.MaxCut",
+      "submodules": [
+        {
+          "name": "PauliCorrelationsEncoding",
+          "class": "PauliCorrelationsEncoding",
+          "args": {},
+          "module": "modules.applications.optimization.MaxCut.encodings.PauliCorrelationsEncoding",
+          "requirements": [
+            {
+              "name": "networkx",
+              "version": "2.8.8"
+            },
+            {
+              "name": "dwave_networkx",
+              "version": "0.8.13"
+            }
+          ],
+          "submodules": [
+            {
+              "name": "CircuitHardwareEfficient",
+              "class": "CircuitHardwareEfficient",
+              "args": {},
+              "module": "modules.circuits.CircuitHardwareEfficient",
+              "requirements": [
+                {
+                  "name": "scipy",
+                  "version": "1.11.1"
+                }
+              ],
+              "submodules": [
+                {
+                  "name": "LibraryQiskit",
+                  "class": "LibraryQiskit",
+                  "args": {},
+                  "module": "modules.applications.QML.generative_modeling.mappings.LibraryQiskit",
+                  "requirements": [
+                    {
+                      "name": "qiskit",
+                      "version": "0.40.0"
+                    },
+                    {
+                      "name": "numpy",
+                      "version": "1.23.5"
+                    }
+                  ],
+                  "submodules": [
+                    {
+                      "name": "QCBM",
+                      "class": "QCBM",
+                      "args": {},
+                      "module": "modules.training.QCBM",
+                      "requirements": [
+                        {
+                          "name": "numpy",
+                          "version": "1.23.5"
+                        },
+                        {
+                          "name": "cma",
+                          "version": "3.3.0"
+                        },
+                        {
+                          "name": "tensorboard",
+                          "version": "2.13.0"
+                        },
+                        {
+                          "name": "tensorboardX",
+                          "version": "2.6.2"
+                        }
+                      ],
+                      "submodules": []
+                    },
+                    {
+                      "name": "Inference",
+                      "class": "Inference",
+                      "args": {},
+                      "module": "modules.training.Inference",
+                      "requirements": [
+                        {
+                          "name": "numpy",
+                          "version": "1.23.5"
+                        }
+                      ],
+                      "submodules": []
+                    }
+                  ]
+                }
+              ]
             }
           ]
         }

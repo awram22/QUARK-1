@@ -43,6 +43,7 @@ class Installer:
             {"name": "PVC", "class": "PVC", "module": "modules.applications.optimization.PVC.PVC"},
             {"name": "SAT", "class": "SAT", "module": "modules.applications.optimization.SAT.SAT"},
             {"name": "TSP", "class": "TSP", "module": "modules.applications.optimization.TSP.TSP"},
+            {"name": "MaxCut", "class": "MaxCut", "module": "modules.applications.optimization.MaxCut.MaxCut"},
             {"name": "GenerativeModeling", "class": "GenerativeModeling",
              "module": "modules.applications.QML.generative_modeling.GenerativeModeling"}
         ]

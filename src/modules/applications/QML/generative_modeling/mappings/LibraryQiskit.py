@@ -14,15 +14,17 @@
 
 from typing import Union
 import logging
-
-from qiskit import QuantumCircuit
-from qiskit.circuit import Parameter
+ 
+#from qiskit import QuantumCircuit
+#from qiskit.circuit import Parameter
+from qiskit_aer import Aer
 from qiskit.compiler import transpile, assemble
 from qiskit.providers import Backend
 import numpy as np
 
 from modules.training.QCBM import QCBM
 from modules.training.Inference import Inference
+from modules.training.Classical import Classical
 from modules.applications.QML.generative_modeling.mappings.Library import Library
 
 logging.getLogger("qiskit").setLevel(logging.WARNING)
@@ -38,7 +40,7 @@ class LibraryQiskit(Library):
         Constructor method
         """
         super().__init__("LibraryQiskit")
-        self.submodule_options = ["QCBM", "Inference"]
+        self.submodule_options = ["QCBM", "Inference", "Classical"]
 
     @staticmethod
     def get_requirements() -> list[dict]:
@@ -101,10 +103,12 @@ class LibraryQiskit(Library):
             }
         }
 
-    def get_default_submodule(self, option: str) -> Union[QCBM, Inference]:
+    def get_default_submodule(self, option: str) -> Union[QCBM, Inference, Classical]:
 
         if option == "QCBM":
             return QCBM()
+        if option == "Classical":
+            return Classical()
         elif option == "Inference":
             return Inference()
         else:
@@ -131,7 +135,10 @@ class LibraryQiskit(Library):
                 circuit.h(wires[0])
 
             elif gate == "CNOT":
-                circuit.cnot(wires[0], wires[1])
+                circuit.cx(wires[0], wires[1])
+            
+            elif gate == "Sdg":
+                circuit.sdg(wires[0])
 
             elif gate == "RZ":
                 circuit.rz(Parameter(f"x_{param_counter:03d}"), wires[0])
@@ -166,7 +173,7 @@ class LibraryQiskit(Library):
 
             elif gate == "Measure":
                 circuit.measure(wires[0], wires[0])
-
+            
             else:
                 raise NotImplementedError(f"Gate {gate} not implemented")
 
@@ -198,24 +205,28 @@ class LibraryQiskit(Library):
             )
 
         elif config == "aer_simulator_gpu":
-            from qiskit import Aer # pylint: disable=C0415
-            backend = Aer.get_backend("aer_simulator")
+            from qiskit_aer import AerSimulator
+            backend = AerSimulator()
             backend.set_options(device="GPU")
 
         elif config == "aer_simulator_cpu":
-            from qiskit import Aer # pylint: disable=C0415
-            backend = Aer.get_backend("aer_simulator")
+            from qiskit_aer import AerSimulator
+            backend = AerSimulator.get_backend("aer_simulator")
             backend.set_options(device="CPU")
 
         elif config == "aer_statevector_simulator_gpu":
-            from qiskit import Aer # pylint: disable=C0415
-            backend = Aer.get_backend('statevector_simulator')
+            from qiskit_aer import AerSimulator
+            backend = AerSimulator.get_backend('statevector_simulator')
             backend.set_options(device="GPU")
 
         elif config == "aer_statevector_simulator_cpu":
-            from qiskit import Aer # pylint: disable=C0415
-            backend = Aer.get_backend('statevector_simulator')
-            backend.set_options(device="CPU")
+            from qiskit_aer import AerSimulator
+            backend = AerSimulator(method='statevector')
+            # Set the backend options to use the CPU
+            backend.set_options(device='CPU')
+            Aer.get_backend('aer_simulator')
+            #backend = AerSimulator.get_backend('statevector_simulator')
+            #backend.set_options(device="CPU")
 
         elif config == "ionQ_Harmony":
             from modules.devices.braket.Ionq import Ionq # pylint: disable=C0415
@@ -275,8 +286,8 @@ class LibraryQiskit(Library):
                 all_circuits = [circuit_transpiled.bind_parameters(solution) for solution in solutions]
                 qobj = assemble(all_circuits, backend=backend)
                 jobs = backend.run(qobj)
-                pmfs = [jobs.result().get_statevector(circuit).probabilities() for circuit in all_circuits]
-                return pmfs, None
+                job_result = [jobs.result().get_statevector(circuit) for circuit in all_circuits]
+                return job_result, None
 
         elif config in ["ionQ_Harmony", "Amazon_SV1"]:
             import time as timetest # pylint: disable=C0415
@@ -325,3 +336,17 @@ class LibraryQiskit(Library):
                 return pmfs, samples
 
         return execute_circuit
+
+    @staticmethod
+    def Y_measurement(qc,qubit,cbit):
+        qc.sdg(qubit)
+        qc.h(qubit)
+        qc.measure(qubit,cbit)
+        return qc
+    
+    
+    @staticmethod
+    def X_measurement(qc,qubit,cbit):
+        qc.h(qubit)
+        qc.measure(qubit,cbit)
+        return qc
