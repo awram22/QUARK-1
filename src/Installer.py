@@ -45,7 +45,8 @@ class Installer:
             {"name": "TSP", "class": "TSP", "module": "modules.applications.optimization.TSP.TSP"},
             {"name": "MaxCut", "class": "MaxCut", "module": "modules.applications.optimization.MaxCut.MaxCut"},
             {"name": "GenerativeModeling", "class": "GenerativeModeling",
-             "module": "modules.applications.QML.generative_modeling.GenerativeModeling"}
+             "module": "modules.applications.QML.generative_modeling.GenerativeModeling"},
+            {"name": "MIS", "class": "MIS", "module": "modules.applications.optimization.MIS.MIS"},
         ]
 
         self.core_requirements = [

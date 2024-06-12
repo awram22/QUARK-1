@@ -11,7 +11,7 @@
 #  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
-
+import logging
 from typing import Tuple
 from typing import TypedDict
 
@@ -40,7 +40,8 @@ class QiskitQAOA(Solver):
         Constructor method
         """
         super().__init__()
-        self.submodule_options = ["qasm_simulator", "qasm_simulator_gpu", "ibm_eagle"]
+        # self.submodule_options = ["qasm_simulator", "qasm_simulator_gpu", "ibm_eagle"]
+        self.submodule_options = ["qasm_simulator", "qasm_simulator_gpu"]
 
     @staticmethod
     def get_requirements() -> list[dict]:
@@ -53,7 +54,7 @@ class QiskitQAOA(Solver):
         return [
             {
                 "name": "qiskit",
-                "version": "0.40.0"
+                "version": "0.45.0"
             },
             {
                 "name": "qiskit-optimization",
@@ -72,9 +73,9 @@ class QiskitQAOA(Solver):
         elif option == "qasm_simulator_gpu":
             from modules.devices.HelperClass import HelperClass  # pylint: disable=C0415
             return HelperClass("qasm_simulator_gpu")
-        elif option == "ibm_eagle":
-            from modules.devices.HelperClass import HelperClass  # pylint: disable=C0415
-            return HelperClass("ibm_eagle")
+        # elif option == "ibm_eagle":
+        #     from modules.devices.HelperClass import HelperClass  # pylint: disable=C0415
+        #     return HelperClass("ibm_eagle")
         else:
             raise NotImplementedError(f"Device Option {option} not implemented")
 
@@ -210,6 +211,9 @@ class QiskitQAOA(Solver):
             elif config["method"] == "qaoa":
                 algorithm = QAOA(reps=config["depth"], optimizer=optimizer,
                                  quantum_instance=self._get_quantum_instance(device_wrapper))
+            else:
+                logging.warning("No method selected in QiskitQAOA. Continue with NumPyMinimumEigensolver.")
+                algorithm = NumPyMinimumEigensolver()
 
         # run actual optimization algorithm
         result = algorithm.compute_minimum_eigenvalue(ising_op)
@@ -223,11 +227,11 @@ class QiskitQAOA(Solver):
             logging.info("Using GPU simulator")
             backend.set_options(device='GPU')
             backend.set_options(method='statevector_gpu')
-        elif device_wrapper.device == 'ibm_eagle':
-            logging.info("Using IBM Eagle")
-            ibm_quantum_token = os.environ.get('ibm_quantum_token')
-            service = QiskitRuntimeService(channel="ibm_quantum", token=ibm_quantum_token)
-            backend = service.least_busy(operational=True, simulator=False, min_num_qubits=127)
+        # elif device_wrapper.device == 'ibm_eagle':
+        #     logging.info("Using IBM Eagle")
+        #     ibm_quantum_token = os.environ.get('ibm_quantum_token')
+        #     service = QiskitRuntimeService(channel="ibm_quantum", token=ibm_quantum_token)
+        #     backend = service.least_busy(operational=True, simulator=False, min_num_qubits=127)
         else:
             logging.info("Using CPU simulator")
             backend.set_options(device='CPU')
