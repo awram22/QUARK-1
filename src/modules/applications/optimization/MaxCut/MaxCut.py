@@ -78,7 +78,7 @@ class MaxCut(Optimization):
         :return: n_qubits
         :rtype: dict
         """
-        adjacency_matrix = MaxCut.load_graph_to_numpy_array("/Users/marwamarso/Downloads/QUARK/src/modules/applications/optimization/MaxCut/data/G9.txt")
+        adjacency_matrix = MaxCut.load_graph_to_numpy_array("/Users/admin/Documents/marwamarso/QUARK-1/src/modules/applications/optimization/MaxCut/data/G9.txt")
         n_qubits = config["n_qubits"]
 
         application_config = {"n_qubits": n_qubits, "adjacency_matrix": adjacency_matrix}

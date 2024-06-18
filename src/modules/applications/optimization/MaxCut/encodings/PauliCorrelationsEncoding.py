@@ -1,4 +1,5 @@
 from typing import TypedDict
+from typing import Union
 from itertools import product, combinations
 
 import dwave_networkx as dnx
@@ -6,6 +7,7 @@ import networkx
 
 from modules.applications.Mapping import *
 from modules.circuits.CircuitHardwareEfficient import CircuitHardwareEfficient
+from modules.circuits.CircuitBrickwork import CircuitBrickwork
 from utils import start_time_measurement, end_time_measurement
 
 
@@ -20,7 +22,7 @@ class PauliCorrelationsEncoding(Mapping):
         Constructor method
         """
         super().__init__()
-        self.submodule_options = ["CircuitHardwareEfficient"]
+        self.submodule_options = ["CircuitHardwareEfficient", "CircuitBrickwork"]
 
     @staticmethod
     def get_requirements() -> list[dict]:
@@ -41,10 +43,12 @@ class PauliCorrelationsEncoding(Mapping):
             }
         ]
     
-    def get_default_submodule(self, option: str) -> CircuitHardwareEfficient:
+    def get_default_submodule(self, option: str) -> Union[CircuitHardwareEfficient, CircuitBrickwork]:
 
         if option == "CircuitHardwareEfficient":
             return CircuitHardwareEfficient()
+        elif option == "CircuitBrickwork":
+            return CircuitBrickwork()
         else:
             raise NotImplementedError(
                 f"Circuit Option {option} not implemented")

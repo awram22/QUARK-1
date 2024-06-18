@@ -16,7 +16,7 @@ import math
 import random
 
 import networkx
-import pulser
+#import pulser
 
 # define R_rydberg
 R_rydberg = 9.75

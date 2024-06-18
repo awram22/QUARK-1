@@ -15,8 +15,8 @@
 from typing import Union
 import logging
  
-#from qiskit import QuantumCircuit
-#from qiskit.circuit import Parameter
+from qiskit import QuantumCircuit
+from qiskit.circuit import Parameter
 from qiskit_aer import Aer
 from qiskit.compiler import transpile, assemble
 from qiskit.providers import Backend

@@ -18,7 +18,6 @@ from cma import CMAEvolutionStrategy
 from tensorboardX import SummaryWriter
 from matplotlib import figure, axes
 import matplotlib.pyplot as plt
-import torch
 from qiskit.quantum_info import Pauli
 from qiskit.quantum_info import Statevector
 from qiskit import Aer, transpile, assemble
