@@ -9,6 +9,7 @@ from modules.applications.Mapping import *
 from modules.circuits.CircuitHardwareEfficient import CircuitHardwareEfficient
 from modules.circuits.CircuitBrickwork import CircuitBrickwork
 from utils import start_time_measurement, end_time_measurement
+from qiskit.quantum_info import Pauli
 
 
 class PauliCorrelationsEncoding(Mapping):
@@ -81,7 +82,7 @@ class PauliCorrelationsEncoding(Mapping):
     class Config(TypedDict):
         """
         Attributes of a valid config
-
+ 
         .. code-block:: python
 
              lagrange_factor: float
@@ -90,31 +91,26 @@ class PauliCorrelationsEncoding(Mapping):
         compression_degree: int
 
     def map(self, input_data: dict, config: dict) -> (dict, float):
-        """
-
-        """
         start = start_time_measurement()
-        pauli_operators = ['X', 'Y', 'Z']
+
         n_qubits = input_data["n_qubits"]
-        adjacency_matrix = input_data["adjacency_matrix"]
         k = config["compression_degree"]
         pauli_strings = []
 
-        # Iterate over each Pauli operator type
-        for op in pauli_operators:
-            # Generate all unique placements for k non-identity operators among n qubits
-            unique_placements = combinations(range(n_qubits), k)
-            
-            for placement in unique_placements:
-                # Start with an identity string
-                pauli_string = ['I'] * n_qubits
-                # Place the identical non-identity Pauli operators in the string
-                for index in placement:
-                    pauli_string[index] = op
-                # Convert to a string and add to the list
-                pauli_strings.append(''.join(pauli_string))
+        # Generate all unique k-combinations of qubit positions
+        for qubit_indices in combinations(range(n_qubits), k):
+            for pauli_op in 'XYZ':
+            # Create a list of 'I' for all qubits
+                label = ['I'] * n_qubits
+                # Replace 'I' with the actual Pauli operator at the specified qubit positions
+                for index in qubit_indices:
+                    label[index] = pauli_op
+                    # Create a Pauli object from the label
+                pauli_object = Pauli(''.join(label))
+                # Append the Pauli object to the list
+                pauli_strings.append(pauli_object)
         
-        encoding_config = {"n_qubits": n_qubits, "pauli_strings": pauli_strings, "adjacency_matrix": adjacency_matrix}
+        encoding_config = {"n_qubits": n_qubits, "pauli_strings": pauli_strings, "adjaceny_matrix": input_data["adjacency_matrix"], "compression_degree":k}
         
-        return encoding_config, end_time_measurement(start)
-
+        end = end_time_measurement(start)
+        return encoding_config, end

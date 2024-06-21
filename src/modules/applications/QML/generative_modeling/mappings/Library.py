@@ -65,7 +65,7 @@ class Library(Core, ABC):
 
         output = self.sequence_to_circuit(input_data)
         backend = self.select_backend(config["backend"])
-        output["execute_circuit"], output['circuit_transpiled'] = self.get_execute_circuit(
+        output["execute_circuit"] = self.get_execute_circuit(
             output["circuit"],
             backend,
             config["backend"],

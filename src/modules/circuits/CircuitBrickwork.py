@@ -73,49 +73,49 @@ class CircuitBrickwork(Circuit):
         """
         depth: int
 
-    
-    def generate_gate_sequence(self, input_data: dict, config: Config) -> dict:
+    def generate_gate_sequence(self, input_data: dict, config: dict) -> dict:
         """
         Returns gate sequence of a hardware-efficient circuit in brickwork architecture.
-
-        :param input_data: Collection of information from the previous modules
-        :type input_data: dict
-        :param config: Config specifying the number of qubits and depth of the circuit
-        :type config: Config
-        :return: Dictionary including the gate sequence of the Hardware Efficient Circuit
-        :rtype: dict
         """
         n_qubits = input_data["n_qubits"]
+        adjaceny_matrix = input_data['adjaceny_matrix']
         depth = config["depth"]
 
         gate_sequence = []
-
-        # Initialize rotation sequence (X, Y, Z)
+        # Cycle through the rotation axes X, Y, Z for each layer
         rotation_sequence = ["RX", "RY", "RZ"]
 
         # Brickwork architecture with single-qubit rotations followed by MS gates
         for d in range(depth):
-            # Single-qubit rotations layer
-            for k in range(n_qubits):
-                rotation_type = rotation_sequence[k % 3]  # Cycle through X, Y, Z
-                gate_sequence.append((rotation_type, [k]))
+            # Single-qubit rotations layer, all qubits rotate around the same axis
+            rotation_type = rotation_sequence[d % 3]
+            for q in range(n_qubits):
+                gate_sequence.append((rotation_type, [q]))
+
+            # Add a barrier after each single-qubit gate layer
+            gate_sequence.append(("Barrier", []))
 
             # MS two-qubit gates layer
-            for k in range(0, n_qubits - 1, 2):
-                gate_sequence.append(("RXX", [k, k + 1]))  # Assuming MS gate with 3 parameters
-            gate_sequence.append(("Barrier", None))  # Barrier after each layer
+            # For even number of qubits, pair them up
+            for q in range(0, n_qubits - 1, 2):
+                gate_sequence.append(("RXX", [q, q + 1]))
+            # For odd number of qubits, you'll need to define the entanglement pattern
+
+            # Add a barrier after each two-qubit gate layer
+            gate_sequence.append(("Barrier", []))
 
         # Measurement layer
-        for k in range(n_qubits):
-            gate_sequence.append(("Measure", [k, k]))
+        for q in range(n_qubits):
+            gate_sequence.append(("Measure", [q]))
 
         output_dict = {
             "gate_sequence": gate_sequence,
             "circuit_name": "BrickworkArchitecture",
             "n_qubits": n_qubits,
             "depth": depth,
-            "pauli_strings": [],  # Assuming no Pauli strings for now
-            "adjacency_matrix": None  # Assuming no adjacency matrix for now
+            "adjacency_matrix": adjaceny_matrix,
+            "pauli_strings": input_data["pauli_strings"],
+            'compression_degree':input_data["compression_degree"]
         }
 
         return output_dict

@@ -23,7 +23,7 @@ from qiskit.quantum_info import Statevector
 from qiskit import Aer, transpile, assemble
 from qiskit.providers import Backend
 from qiskit import execute
-
+import torch
 
 
 from modules.training.Training import *
@@ -192,6 +192,7 @@ class Classical(Training):
         self.circuit = input_data["circuit"]
         self.backend = input_data["backend"]
         self.n_shots =input_data["n_shots"]
+        self.k = input_data["compression_degree"]
         
         if config['loss'] == "KL":
             self.loss_func = self.kl_divergence
@@ -305,44 +306,28 @@ class Classical(Training):
         return best_pmf
 
     def nonlinear_loss(self, params):
-        backend = Aer.get_backend("aer_simulator_statevector")
-        # Ensure the original circuit is available and has the correct parameters
+
+        pauli_strings = self.pauli_strings
+
+        backend = self.backend
         original_circuit = self.circuit
+        statevector, _ = self.execute_circuit([params])
 
-        # Transpile the circuit for the backend
-        transpiled_circuit = transpile(original_circuit, backend)
-        # Ensure there are no final measurement operations if present
-        transpiled_circuit.remove_final_measurements()
-        # Bind the parameters to the transpiled circuit
-        bound_circuit = transpiled_circuit.bind_parameters(params)
-        # Execute the bound circuit
-        job = execute(bound_circuit, backend)
-        result = job.result()
 
-        # Retrieve the statevector directly, without referencing a specific circuit
-        statevector = result.get_statevector()
-        
-        #result = backend.run(binded_params).result()
-        statevector = Statevector(result.get_statevector())
+        expectations = self.calculate_expectations(statevector, pauli_strings)
 
-        # Calculate the expectation values for the Pauli strings
-        expectations = self.calculate_expectations(statevector, self.pauli_strings)
-
-        # Compute the first term of the loss function using the adjacency matrix
         first_term = 0
         for i in range(self.n_qubits):
             for j in range(self.n_qubits):
-                if self.adjacency_matrix[i, j] > 0:  # If there's an edge between i and j
-                    exp_value_i = expectations[self.pauli_strings[i]]
-                    exp_value_j = expectations[self.pauli_strings[j]]
+                if self.adjacency_matrix[i, j] > 0:
+                    exp_value_i = expectations[pauli_strings[i]]
+                    exp_value_j = expectations[pauli_strings[j]]
                     first_term += self.adjacency_matrix[i, j] * torch.tanh(self.alpha * exp_value_i) * torch.tanh(self.alpha * exp_value_j)
 
-        # Compute the regularization term (L(reg))
         reg_term = self.calculate_regularization_term(expectations, self.alpha, self.beta, self.nu)
 
-        # Total loss is the sum of the first term and the regularization term
         loss = first_term + reg_term
-        
+
         return -loss
     
     def calculate_expectations(self,statevector, pauli_strings):
