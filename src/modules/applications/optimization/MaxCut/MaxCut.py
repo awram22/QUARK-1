@@ -90,19 +90,19 @@ class MaxCut(Optimization):
         # Read the file and store the edges
         with open(file_path, 'r') as file:
             first_line = file.readline()
-            num_vertices, num_edges = map(int, first_line.split())
+            num_vertices, _ = map(int, first_line.split())
 
             # Initialize the adjacency matrix with zeros
             # Assuming the graph is 1-indexed, we add 1 to the size so that indices match
-            adjacency_matrix = np.zeros((num_vertices + 1, num_vertices + 1), dtype=int)
+            adjacency_matrix = np.zeros((num_vertices , num_vertices ), dtype=int)
 
             # Read the rest of the lines which contain the edges
             for line in file:
                 # Split the line into vertex1, vertex2, and weight
                 vertex1, vertex2, weight = map(int, line.split())
                 # Since it's an undirected graph, set the value for both [vertex1][vertex2] and [vertex2][vertex1]
-                adjacency_matrix[vertex1][vertex2] = weight
-                adjacency_matrix[vertex2][vertex1] = weight
+                adjacency_matrix[vertex1-1][vertex2-1] = weight
+                adjacency_matrix[vertex2-1][vertex1-1] = weight
 
             return adjacency_matrix
 

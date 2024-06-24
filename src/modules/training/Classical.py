@@ -19,11 +19,17 @@ from tensorboardX import SummaryWriter
 from matplotlib import figure, axes
 import matplotlib.pyplot as plt
 from qiskit.quantum_info import Pauli
+from qiskit.opflow.primitive_ops import PauliOp
+from qiskit.opflow import PauliExpectation, CircuitSampler, StateFn
 from qiskit.quantum_info import Statevector
 from qiskit import Aer, transpile, assemble
+from qiskit_aer import AerSimulator
 from qiskit.providers import Backend
 from qiskit import execute
 import torch
+from qiskit.exceptions import QiskitError
+import qiskit_aer 
+import math
 
 
 from modules.training.Training import *
@@ -193,6 +199,7 @@ class Classical(Training):
         self.backend = input_data["backend"]
         self.n_shots =input_data["n_shots"]
         self.k = input_data["compression_degree"]
+
         
         if config['loss'] == "KL":
             self.loss_func = self.kl_divergence
@@ -203,12 +210,13 @@ class Classical(Training):
         else:
             raise NotImplementedError("Loss function not implemented")
 
-        n_params = len(self.circuit.parameters)
-        x0 = torch.randn(n_params, requires_grad=True)  # Initial parameters as a PyTorch tensor
+        self.n_params = len(self.circuit.parameters)
+        x0 = torch.randn(self.n_params, requires_grad=True)  # Initial parameters as a PyTorch tensor
 
         # Setup the optimizer
         optimizer = torch.optim.Adam([x0], lr=config.get('learning_rate', 0.01))
-
+        
+        
         return x0, optimizer
 
     def start_training(self, input_data: dict, config: Config, **kwargs: dict) -> (dict, float):
@@ -226,48 +234,43 @@ class Classical(Training):
         """
 
         params, optimizer = self.setup_training(input_data, config)
-
-        # Training loop with stopping criterion based on cumulative improvement
-        last_loss = None
-        cumulative_improvement = 0
-        steps_without_improvement = 0
-        self.alpha = self.n_qubits
+        W = torch.tensor(self.adjacency_matrix)
+        alpha = self.n_qubits ** math.floor(self.k / 2)
+        
         self.beta = 0.5
         num_edges = np.count_nonzero(self.adjacency_matrix) / 2
-        m = 3 * self.n_qubits * (self.n_qubits - 1) / 2
-        self.nu =  num_edges / 2 + (m - 1) / 4
+        self.m = 3 * self.n_qubits * (self.n_qubits - 1) / 2
+        self.nu =  (num_edges / 2) + (self.m - 1) / 4
 
-        for step in range(config['max_evaluations']):
+        num_epochs = 1000  # Placeholder for the number of training epochs
+        for epoch in range(num_epochs):
+            
             optimizer.zero_grad()
+            params = torch.nn.Parameter(torch.randn(self.n_params, requires_grad=True))
             params_list = params.detach().numpy().tolist()
-            loss = self.loss_func(params_list)
+            solutions = self.executed_circuit(params_list,self.circuit)
+
+
+            expectation_values = torch.tensor(self.get_expectation_value(self.pauli_strings, solutions),dtype=torch.float32, requires_grad=True)
+            loss = self.nonlinear_loss(W, alpha, expectation_values)
+
             loss.backward()
             optimizer.step()
+            print(f"Epoch {epoch}, Loss: {loss.item()}")
 
-            if last_loss is not None:
-                improvement = last_loss - loss.item()
-                cumulative_improvement += improvement
-                if improvement < config.get('improvement_threshold', 0.01):
-                    steps_without_improvement += 1
-                else:
-                    steps_without_improvement = 0
-            else:
-                cumulative_improvement = 0
-                steps_without_improvement = 0
+        
+        
 
-            if steps_without_improvement >= config.get('patience', 50):
-                logging.info(f"Early stopping after {step} iterations.")
-                break
 
-            last_loss = loss.item()
-            logging.info(f"Step {step}, Loss: {last_loss}")
+
+
 
         # After training, params holds the optimized parameters
         optimized_params = params.detach().numpy()
 
         # Update input_data with the best parameters found
         input_data['optimized_params'] = optimized_params
-        return input_data, last_loss
+        return input_data, loss
 
 
 
@@ -305,45 +308,40 @@ class Classical(Training):
 
         return best_pmf
 
-    def nonlinear_loss(self, params):
+    def nonlinear_loss(self, W, alpha, expectation_values):
+        tanh_values = torch.tanh(alpha * expectation_values)
+        product_matrix = torch.outer(tanh_values, tanh_values)
+        loss_original = torch.sum(W * product_matrix)
+        regularization_term = self.beta * self.nu * (torch.sum(tanh_values ** 2) / self.m) ** 2
+        
+        loss = loss_original + regularization_term
+        return loss
 
-        pauli_strings = self.pauli_strings
-
-        backend = self.backend
-        original_circuit = self.circuit
-        statevector, _ = self.execute_circuit([params])
-
-
-        expectations = self.calculate_expectations(statevector, pauli_strings)
-
-        first_term = 0
-        for i in range(self.n_qubits):
-            for j in range(self.n_qubits):
-                if self.adjacency_matrix[i, j] > 0:
-                    exp_value_i = expectations[pauli_strings[i]]
-                    exp_value_j = expectations[pauli_strings[j]]
-                    first_term += self.adjacency_matrix[i, j] * torch.tanh(self.alpha * exp_value_i) * torch.tanh(self.alpha * exp_value_j)
-
-        reg_term = self.calculate_regularization_term(expectations, self.alpha, self.beta, self.nu)
-
-        loss = first_term + reg_term
-
-        return -loss
     
-    def calculate_expectations(self,statevector, pauli_strings):
-        expectations = {}
-        for pauli_string in pauli_strings:
-            pauli = Pauli(pauli_string)
-            operator_matrix = pauli.to_matrix()
-            expectation_value = (statevector.adjoint() @ operator_matrix @ statevector).real
-            expectations[pauli_string] = expectation_value
-        return expectations
-    
-    def calculate_regularization_term(self, expectations, alpha, beta, nu):
-        # Compute the regularization term based on the expectations dictionary
-        reg_term = 0
-        m = len(self.pauli_strings)
-        for i, expectation_value in expectations.items():
-            reg_term += torch.tanh(alpha * expectation_value) ** 2
-        reg_term *= (beta * nu) / m
-        return reg_term
+
+    def get_expectation_value(self, pauli, statevector):
+
+        operator_matrices = [p.to_matrix() for p in pauli]
+        expectation_value = [np.vdot(statevector, op_matrix @ statevector.data) for op_matrix in operator_matrices]
+
+        return np.real(expectation_value)
+
+
+    def executed_circuit(self,params_list, circuit):
+        backend = qiskit_aer.backends.statevector_simulator.StatevectorSimulator()
+
+        # Ensure that there are no measurements in the circuit
+        circuit.remove_final_measurements(inplace=True)
+        # Transpile the circuit for the backend
+        param_dict = {param: value for param, value in zip(circuit.parameters, params_list)}
+        bound_circuit = circuit.bind_parameters(param_dict)
+        transpiled_circuit = transpile(bound_circuit, backend=backend)
+
+        # Execute the transpiled circuits
+        job = backend.run(transpiled_circuit)
+
+        # Retrieve the statevectors
+        result = job.result()
+        data = result.data()
+        statevector = result.get_statevector()
+        return statevector
