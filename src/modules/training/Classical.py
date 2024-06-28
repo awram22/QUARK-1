@@ -27,10 +27,12 @@ from qiskit_aer import AerSimulator
 from qiskit.providers import Backend
 from qiskit import execute
 import torch
+from torch.utils.tensorboard import SummaryWriter
 from qiskit.exceptions import QiskitError
 import qiskit_aer 
 import math
 
+from qiskit.quantum_info import Operator
 
 from modules.training.Training import *
 from utils_mpi import is_running_mpi, get_comm
@@ -51,14 +53,19 @@ class Classical(Training):
         """
         super().__init__("Classical")
 
-        self.n_states_range: list
-        self.target: np.array
-        self.study_generalization: bool
-        self.generalization_metrics: dict
-        self.writer: SummaryWriter
-        self.loss_func: callable
-        self.fig: figure
-        self.ax: axes.Axes
+        self.writer: SummaryWriter 
+        self.loss_func: callable = None
+        self.fig = None
+        self.ax = None
+        self.n_params = 0
+        self.circuit = None
+        self.adjacency_matrix = None
+        self.pauli_strings = None
+        self.n_qubits = 0
+        self.beta = 0.5
+        self.nu = 0
+        self.m = 0
+        self.k = 0
 
     @staticmethod
     def get_requirements() -> list[dict]:
@@ -194,9 +201,7 @@ class Classical(Training):
         self.adjacency_matrix = input_data["adjacency_matrix"]
         self.pauli_strings = input_data["pauli_strings"]
         self.n_qubits = input_data["n_qubits"]
-        self.execute_circuit = input_data["execute_circuit"]
         self.circuit = input_data["circuit"]
-        self.backend = input_data["backend"]
         self.n_shots =input_data["n_shots"]
         self.k = input_data["compression_degree"]
 
@@ -211,13 +216,13 @@ class Classical(Training):
             raise NotImplementedError("Loss function not implemented")
 
         self.n_params = len(self.circuit.parameters)
-        x0 = torch.randn(self.n_params, requires_grad=True)  # Initial parameters as a PyTorch tensor
+        params = torch.randn(self.n_params, requires_grad=True)  # Initial parameters as a PyTorch tensor
 
         # Setup the optimizer
-        optimizer = torch.optim.Adam([x0], lr=config.get('learning_rate', 0.01))
+        optimizer = torch.optim.Adam([params], lr=config.get('learning_rate', 0.01))
+        self.writer = SummaryWriter("/Users/admin/Documents/marwamarso/QUARK-1/results")
         
-        
-        return x0, optimizer
+        return params, optimizer
 
     def start_training(self, input_data: dict, config: Config, **kwargs: dict) -> (dict, float):
         """
@@ -234,81 +239,65 @@ class Classical(Training):
         """
 
         params, optimizer = self.setup_training(input_data, config)
+        num_epochs = config.get("num_epochs", 1000)
+        min_loss = float('inf')
+        best_cut_value = float('-inf')
+        V_best = kwargs.get("V_best", float('inf'))
+        
+        self.backend = qiskit_aer.backends.statevector_simulator.StatevectorSimulator()
         W = torch.tensor(self.adjacency_matrix)
         alpha = self.n_qubits ** math.floor(self.k / 2)
+        self.fig, self.ax = plt.subplots()
         
-        self.beta = 0.5
-        num_edges = np.count_nonzero(self.adjacency_matrix) / 2
-        self.m = 3 * self.n_qubits * (self.n_qubits - 1) / 2
-        self.nu =  (num_edges / 2) + (self.m - 1) / 4
-
-        num_epochs = 1000  # Placeholder for the number of training epochs
         for epoch in range(num_epochs):
-            
             optimizer.zero_grad()
-            params = torch.nn.Parameter(torch.randn(self.n_params, requires_grad=True))
+
             params_list = params.detach().numpy().tolist()
-            solutions = self.executed_circuit(params_list,self.circuit)
-
-
-            expectation_values = torch.tensor(self.get_expectation_value(self.pauli_strings, solutions),dtype=torch.float32, requires_grad=True)
-            loss = self.nonlinear_loss(W, alpha, expectation_values)
-
+            statevector = self.executed_circuit(params_list, self.circuit)
+            expectations = self.get_expectation_values(self.pauli_strings, statevector)
+            loss = self.loss_func(W, alpha, expectations)
             loss.backward()
             optimizer.step()
-            print(f"Epoch {epoch}, Loss: {loss.item()}")
+            min_loss = min(min_loss, loss.item())
+            print(f"Epoch {epoch}, Loss: {min_loss}")
 
-        
-        
+            # Calculate the objective function value (cut value)
+            cut_value = self.calculate_cut_value(W, expectations)
+            # Update the best cut value seen so far
+            best_cut_value = max(best_cut_value, cut_value.item())
+
+            r = cut_value.item() / V_best if V_best != 0 else 0
+
+            if epoch % 10 == 0:  # Change 10 to the desired frequency of logging
+                self.data_visualization(loss.item(), epoch)
+
+        self.writer.close()
+
+        input_data['optimized_params'] = params.detach().numpy()
+        return input_data, min_loss
 
 
 
+    def data_visualization(self, loss_epoch, epoch):
 
+        non_linearl_loss = loss_epoch
 
-        # After training, params holds the optimized parameters
-        optimized_params = params.detach().numpy()
+        self.writer.add_scalar("metrics/loss", non_linearl_loss, epoch)
 
-        # Update input_data with the best parameters found
-        input_data['optimized_params'] = optimized_params
-        return input_data, loss
-
-
-
-    def data_visualization(self, loss_epoch, pmfs_model, samples, epoch):
-        index = loss_epoch.argmin()
-        best_pmf = pmfs_model[index] / pmfs_model[index].sum()
-        if self.study_generalization:
-
-            if samples is None:
-                counts = self.sample_from_pmf(
-                    n_states_range=self.n_states_range,
-                    pmf=best_pmf.get() if GPU else best_pmf,
-                    n_shots=self.generalization_metrics.n_shots)
-            else:
-                counts = samples[int(index)]
-
-            metrics = self.generalization_metrics.get_metrics(counts.get() if GPU else counts)
-            for (key, value) in metrics.items():
-                self.writer.add_scalar(f"metrics/{key}", value, epoch)
-
-        nll = self.nll(best_pmf.reshape([1, -1]), self.target)
-        kl = self.kl_divergence(best_pmf.reshape([1, -1]), self.target)
-        self.writer.add_scalar("metrics/NLL", nll.get() if GPU else nll, epoch)
-        self.writer.add_scalar("metrics/KL", kl.get() if GPU else kl, epoch)
 
         self.ax.clear()
-        self.ax.imshow(
-            best_pmf.reshape(int(np.sqrt(best_pmf.size)), int(np.sqrt(best_pmf.size))).get() if GPU
-            else best_pmf.reshape(int(np.sqrt(best_pmf.size)),
-                                    int(np.sqrt(best_pmf.size))),
-            cmap='binary',
-            interpolation='none')
+
         self.ax.set_title(f'Iteration {epoch}')
         self.writer.add_figure('grid_figure', self.fig, global_step=epoch)
 
-        return best_pmf
+        return non_linearl_loss
 
     def nonlinear_loss(self, W, alpha, expectation_values):
+        num_edges = np.count_nonzero(self.adjacency_matrix) / 2
+        self.nu =  (num_edges / 2) + (self.m - 1) / 4
+        self.m = 3 * self.n_qubits * (self.n_qubits - 1) / 2
+        self.nu =  (num_edges / 2) + (self.m - 1) / 4
+
         tanh_values = torch.tanh(alpha * expectation_values)
         product_matrix = torch.outer(tanh_values, tanh_values)
         loss_original = torch.sum(W * product_matrix)
@@ -319,29 +308,71 @@ class Classical(Training):
 
     
 
-    def get_expectation_value(self, pauli, statevector):
+    def get_expectation_value(self, pauli_strings, statevector):
 
-        operator_matrices = [p.to_matrix() for p in pauli]
-        expectation_value = [np.vdot(statevector, op_matrix @ statevector.data) for op_matrix in operator_matrices]
+        expectation_values = torch.empty(len(pauli_strings), dtype=torch.float32, device=statevector.device)
 
-        return np.real(expectation_value)
+        # Calculate the expectation value for each Pauli string.
+        for idx, pauli in enumerate(pauli_strings):
+            # Convert the Pauli string to a matrix.
+            pauli_matrix_np = Operator(pauli).data
+            pauli_matrix = torch.tensor(pauli_matrix_np, dtype=torch.cfloat, device=statevector.device, requires_grad=True)
 
+            
+            # Calculate the expectation value.
+            statevector_adjoint = torch.conj(statevector)  # Conjugate transpose (adjoint)
+            expectation_value = torch.real(torch.dot(statevector_adjoint, torch.mv(pauli_matrix, statevector)))
+            expectation_values[idx] = expectation_value
 
-    def executed_circuit(self,params_list, circuit):
-        backend = qiskit_aer.backends.statevector_simulator.StatevectorSimulator()
+        return expectation_values
 
-        # Ensure that there are no measurements in the circuit
-        circuit.remove_final_measurements(inplace=True)
-        # Transpile the circuit for the backend
-        param_dict = {param: value for param, value in zip(circuit.parameters, params_list)}
+    def get_expectation_values(self, pauli_objects,statevector):
+        sampler = CircuitSampler(self.backend)
+        expectation_values = []
+
+        for pauli in pauli_objects:
+            # Wrap the quantum state in a StateFn
+            state_fn = StateFn(statevector)
+
+            # Wrap the Pauli object in a PauliOp and convert to an expectation
+            pauli_expectation = PauliExpectation().convert(StateFn(pauli, is_measurement=True) @ state_fn)
+
+            # Use the sampler to compute the expectation value
+            sampled_expect_op = sampler.convert(pauli_expectation)
+            expectation_value = sampled_expect_op.eval().real
+
+            expectation_values.append(expectation_value)
+        
+        return expectation_values
+
+    def executed_circuit(self,params, circuit):
+        
+
+        # Make sure 'params' is a tensor with gradient tracking enabled.
+        if not isinstance(params, torch.Tensor):
+            params = torch.tensor(params, dtype=torch.float32, requires_grad=True)
+
+        # Prepare the parameter dictionary for binding.
+        param_dict = {param: value.item() for param, value in zip(circuit.parameters, params)}
+
+        # Bind the parameters and transpile the quantum circuit for the backend.
         bound_circuit = circuit.bind_parameters(param_dict)
-        transpiled_circuit = transpile(bound_circuit, backend=backend)
+        transpiled_circuit = transpile(bound_circuit, backend=self.backend)
 
-        # Execute the transpiled circuits
-        job = backend.run(transpiled_circuit)
+        # Execute the transpiled circuit.
+        job = self.backend.run(transpiled_circuit)
 
-        # Retrieve the statevectors
+        # Retrieve the statevector as a PyTorch tensor with 'requires_grad' enabled.
         result = job.result()
-        data = result.data()
-        statevector = result.get_statevector()
-        return statevector
+        statevector_np = result.get_statevector()
+        statevector_torch = torch.tensor(statevector_np, dtype=torch.cfloat, requires_grad=True)
+
+        return statevector_np
+
+    def calculate_cut_value(self, W, expectations):
+        """
+        Calculate the objective function (cut value) using the adjacency matrix and the expectation values.
+        """
+        product_matrix = torch.outer(expectations, expectations)
+        cut_value = torch.sum(W * (1 - product_matrix))
+        return cut_value
