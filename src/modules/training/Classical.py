@@ -14,23 +14,23 @@
 
 from typing import TypedDict
 import logging
-from cma import CMAEvolutionStrategy
 from tensorboardX import SummaryWriter
 from matplotlib import figure, axes
 import matplotlib.pyplot as plt
-from qiskit.quantum_info import Pauli
-from qiskit.opflow.primitive_ops import PauliOp
-from qiskit.opflow import PauliExpectation, CircuitSampler, StateFn
-from qiskit.quantum_info import Statevector
-from qiskit import Aer, transpile, assemble
+from qiskit.quantum_info import Pauli, commutator, Statevector, PauliList, SparsePauliOp
+from qiskit.circuit.library import EfficientSU2
+from psfam.pauli_organizer import PauliOrganizer
+from qiskit.primitives import Estimator
 from qiskit_aer import AerSimulator
 from qiskit.providers import Backend
-from qiskit import execute
+from qiskit.quantum_info import Pauli
+#from qiskit import execute
 import torch
-from torch.utils.tensorboard import SummaryWriter
+#from torch.utils.tensorboard import SummaryWriter
 from qiskit.exceptions import QiskitError
-import qiskit_aer 
 import math
+from qiskit import transpile
+
 
 from qiskit.quantum_info import Operator
 
@@ -53,7 +53,7 @@ class Classical(Training):
         """
         super().__init__("Classical")
 
-        self.writer: SummaryWriter 
+        #self.writer: SummaryWriter 
         self.loss_func: callable = None
         self.fig = None
         self.ax = None
@@ -195,8 +195,7 @@ class Classical(Training):
         """
 
         logging.info(
-            f"Running config: [backend={input_data['backend']}] [n_qubits={input_data['n_qubits']}] "\
-            f"[population_size={config['population_size']}]")
+            f"Running config: [backend={input_data['backend']}] [n_qubits={input_data['n_qubits']}] ")
 
         self.adjacency_matrix = input_data["adjacency_matrix"]
         self.pauli_strings = input_data["pauli_strings"]
@@ -219,8 +218,8 @@ class Classical(Training):
         params = torch.randn(self.n_params, requires_grad=True)  # Initial parameters as a PyTorch tensor
 
         # Setup the optimizer
-        optimizer = torch.optim.Adam([params], lr=config.get('learning_rate', 0.01))
-        self.writer = SummaryWriter("/Users/admin/Documents/marwamarso/QUARK-1/results")
+        optimizer = torch.optim.Adam([params], lr=config.get('learning_rate', 0.001))
+        #self.writer = SummaryWriter("/Users/admin/Documents/marwamarso/QUARK-1/results")
         
         return params, optimizer
 
@@ -244,34 +243,33 @@ class Classical(Training):
         best_cut_value = float('-inf')
         V_best = kwargs.get("V_best", float('inf'))
         
-        self.backend = qiskit_aer.backends.statevector_simulator.StatevectorSimulator()
-        W = torch.tensor(self.adjacency_matrix)
+        self.backend = AerSimulator()
+        W = torch.tensor(self.adjacency_matrix, dtype=torch.int64)
         alpha = self.n_qubits ** math.floor(self.k / 2)
         self.fig, self.ax = plt.subplots()
         
         for epoch in range(num_epochs):
             optimizer.zero_grad()
-
             params_list = params.detach().numpy().tolist()
-            statevector = self.executed_circuit(params_list, self.circuit)
-            expectations = self.get_expectation_values(self.pauli_strings, statevector)
-            loss = self.loss_func(W, alpha, expectations)
+            expectation_values = self.calculate_expectation_values(self.circuit, params_list, self.pauli_strings, self.backend)
+            loss = self.loss_func(W, alpha, torch.tensor(expectation_values, requires_grad=True))
             loss.backward()
             optimizer.step()
             min_loss = min(min_loss, loss.item())
-            print(f"Epoch {epoch}, Loss: {min_loss}")
+            
 
             # Calculate the objective function value (cut value)
-            cut_value = self.calculate_cut_value(W, expectations)
+            cut_value = self.calculate_cut_value(W, torch.tensor(expectation_values, requires_grad=True))
             # Update the best cut value seen so far
             best_cut_value = max(best_cut_value, cut_value.item())
 
             r = cut_value.item() / V_best if V_best != 0 else 0
-
+            print(f"Epoch {epoch}, Loss: {min_loss}, Cut Valie: {best_cut_value}, r: {r}")
+            
             if epoch % 10 == 0:  # Change 10 to the desired frequency of logging
                 self.data_visualization(loss.item(), epoch)
 
-        self.writer.close()
+        #self.writer.close()
 
         input_data['optimized_params'] = params.detach().numpy()
         return input_data, min_loss
@@ -282,13 +280,13 @@ class Classical(Training):
 
         non_linearl_loss = loss_epoch
 
-        self.writer.add_scalar("metrics/loss", non_linearl_loss, epoch)
+        #self.writer.add_scalar("metrics/loss", non_linearl_loss, epoch)
 
 
         self.ax.clear()
 
         self.ax.set_title(f'Iteration {epoch}')
-        self.writer.add_figure('grid_figure', self.fig, global_step=epoch)
+        #self.writer.add_figure('grid_figure', self.fig, global_step=epoch)
 
         return non_linearl_loss
 
@@ -306,68 +304,54 @@ class Classical(Training):
         loss = loss_original + regularization_term
         return loss
 
-    
+    def add_measurements(self, circuit, pauli_list):
+        meas_circuit = circuit.copy()
+        for pauli_string in pauli_list.to_labels():
+            for i, pauli in enumerate(pauli_string):
+                if pauli == 'X':
+                    meas_circuit.h(i)
+                elif pauli == 'Y':
+                    meas_circuit.sdg(i)
+                    meas_circuit.h(i)
+                # For 'Z' or 'I' we do nothing (default Z-basis measurement)
+        meas_circuit.measure_all()
+        return meas_circuit
 
-    def get_expectation_value(self, pauli_strings, statevector):
-
-        expectation_values = torch.empty(len(pauli_strings), dtype=torch.float32, device=statevector.device)
-
-        # Calculate the expectation value for each Pauli string.
-        for idx, pauli in enumerate(pauli_strings):
-            # Convert the Pauli string to a matrix.
-            pauli_matrix_np = Operator(pauli).data
-            pauli_matrix = torch.tensor(pauli_matrix_np, dtype=torch.cfloat, device=statevector.device, requires_grad=True)
-
-            
-            # Calculate the expectation value.
-            statevector_adjoint = torch.conj(statevector)  # Conjugate transpose (adjoint)
-            expectation_value = torch.real(torch.dot(statevector_adjoint, torch.mv(pauli_matrix, statevector)))
-            expectation_values[idx] = expectation_value
-
-        return expectation_values
-
-    def get_expectation_values(self, pauli_objects,statevector):
-        sampler = CircuitSampler(self.backend)
-        expectation_values = []
-
-        for pauli in pauli_objects:
-            # Wrap the quantum state in a StateFn
-            state_fn = StateFn(statevector)
-
-            # Wrap the Pauli object in a PauliOp and convert to an expectation
-            pauli_expectation = PauliExpectation().convert(StateFn(pauli, is_measurement=True) @ state_fn)
-
-            # Use the sampler to compute the expectation value
-            sampled_expect_op = sampler.convert(pauli_expectation)
-            expectation_value = sampled_expect_op.eval().real
-
-            expectation_values.append(expectation_value)
+    def calculate_expectation_values(self, circuit, params, pauli_strings, backend):
+        pauli_list = PauliList(pauli_strings)
+        commute_groups = pauli_list.group_commuting(qubit_wise=True)
         
-        return expectation_values
+        expectation_values = {pauli: None for pauli in pauli_strings}
+        estimator = Estimator()
 
-    def executed_circuit(self,params, circuit):
-        
+        for group in commute_groups:
+            # Create circuit with measurements for the combined Pauli string
+            meas_circuit = self.add_measurements(circuit, group)
 
-        # Make sure 'params' is a tensor with gradient tracking enabled.
-        if not isinstance(params, torch.Tensor):
-            params = torch.tensor(params, dtype=torch.float32, requires_grad=True)
+            # Bind parameters
+            bound_circuit = meas_circuit.assign_parameters({p: v for p, v in zip(circuit.parameters, params)})
 
-        # Prepare the parameter dictionary for binding.
-        param_dict = {param: value.item() for param, value in zip(circuit.parameters, params)}
+            # Transpile and get statevector
+            transpiled_circuit = transpile(bound_circuit, backend)
+            sim_result = self.backend.run(transpiled_circuit, shots=5000).result()
+            counts = sim_result.get_counts()
+            for pauli in group:
+                total_counts = sum(counts.values())
+                exp_val = 0
+                pauli_str = pauli.to_label()
+                for bitstring, count in counts.items():
+                    parity = self.calculate_parity(bitstring, pauli_str)
+                    exp_val += parity * count / total_counts
+                expectation_values[pauli_str] = exp_val
+        return [expectation_values[pauli.to_label()] for pauli in pauli_strings]
 
-        # Bind the parameters and transpile the quantum circuit for the backend.
-        bound_circuit = circuit.bind_parameters(param_dict)
-        transpiled_circuit = transpile(bound_circuit, backend=self.backend)
+    def calculate_parity(self,bitstring, pauli_str):
+        parity = 1
+        for i, p in enumerate(pauli_str):
+            if p in {'X', 'Y'}:
+                parity *= (-1) ** (int(bitstring[i]) == 1)
+        return parity
 
-        # Execute the transpiled circuit.
-        job = self.backend.run(transpiled_circuit)
-
-        # Retrieve the statevector as a PyTorch tensor with 'requires_grad' enabled.
-        result = job.result()
-        statevector_np = result.get_statevector()
-        statevector_torch = torch.tensor(statevector_np, dtype=torch.cfloat, requires_grad=True)
-
-        return statevector_np
 
     def calculate_cut_value(self, W, expectations):
         """

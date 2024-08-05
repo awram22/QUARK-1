@@ -96,6 +96,7 @@ class PauliCorrelationsEncoding(Mapping):
         n_qubits = input_data["n_qubits"]
         k = config["compression_degree"]
         pauli_strings = []
+        max_pauli_strings = len(input_data["adjacency_matrix"])
 
         # Generate all unique k-combinations of qubit positions
         for qubit_indices in combinations(range(n_qubits), k):
@@ -109,6 +110,10 @@ class PauliCorrelationsEncoding(Mapping):
                 pauli_object = Pauli(''.join(label))
                 # Append the Pauli object to the list
                 pauli_strings.append(pauli_object)
+                if len(pauli_strings) >= max_pauli_strings:
+                    break
+            if len(pauli_strings) >= max_pauli_strings:
+                break
         
         encoding_config = {"n_qubits": n_qubits, "pauli_strings": pauli_strings, "adjaceny_matrix": input_data["adjacency_matrix"], "compression_degree":k}
         

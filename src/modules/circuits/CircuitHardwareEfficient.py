@@ -91,7 +91,7 @@ class CircuitHardwareEfficient(Circuit):
         n_qubits = input_data["n_qubits"]
         depth = config["depth"]
         pauli_strings = input_data["pauli_strings"]
-        adjacency_matrix = input_data["adjacency_matrix"]
+        adjacency_matrix = input_data['adjaceny_matrix']
 
         gate_sequence = []
 
@@ -115,7 +115,9 @@ class CircuitHardwareEfficient(Circuit):
             "n_qubits": n_qubits,
             "depth": depth,
             "pauli_strings": pauli_strings,
-            "adjacency_matrix":adjacency_matrix
+            "adjacency_matrix":adjacency_matrix,
+            "compression_degree":input_data["compression_degree"]
+
         }
 
         return output_dict

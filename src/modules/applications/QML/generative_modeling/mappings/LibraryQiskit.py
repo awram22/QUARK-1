@@ -17,7 +17,7 @@ import logging
  
 from qiskit import QuantumCircuit
 from qiskit.circuit import Parameter
-from qiskit_aer import Aer
+#from qiskit_aer import Aer
 from qiskit.compiler import transpile, assemble
 from qiskit.providers import Backend
 import numpy as np
@@ -232,7 +232,7 @@ class LibraryQiskit(Library):
             backend = AerSimulator(method='statevector')
             # Set the backend options to use the CPU
             backend.set_options(device='CPU')
-            Aer.get_backend('aer_simulator')
+            #Aer.get_backend('aer_simulator')
             #backend = AerSimulator.get_backend('statevector_simulator')
             #backend.set_options(device="CPU")
 

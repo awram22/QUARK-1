@@ -475,9 +475,9 @@ class ConfigManager:
 
         ConfigManager._create_tree_figure_helper(graph, self.config["application"])
 
-        nx.draw(graph, with_labels=True, pos=nx.spectral_layout(graph), node_shape="s")
-        plt.savefig(f"{store_dir}/BenchmarkGraph.png", format="PNG")
-        plt.clf()
+        #nx.draw(graph, with_labels=True, pos=nx.spectral_layout(graph), node_shape="s")
+        #plt.savefig(f"{store_dir}/BenchmarkGraph.png", format="PNG")
+        #plt.clf()
 
     @staticmethod
     def _create_tree_figure_helper(graph: nx.Graph, config: ConfigModule) -> None:
